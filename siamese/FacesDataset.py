@@ -22,7 +22,8 @@ class FacesDataset(Dataset):
             to be the test set
         """
         dataset_path = "/home/carlo/Documentos/Datasets/CelebA/"
-        files = glob(dataset_path + "img_align_celeba/*")
+        self.images_path = dataset_path + "img_align_celeba/"
+        files = glob(self.images_path + "*")
         self.train = train
         table = pd.read_csv(dataset_path + "identity_CelebA.csv").values
         self.images = dict()
@@ -60,8 +61,10 @@ class FacesDataset(Dataset):
         else:  # Two different persons
             first_path, second_path = self.__get_different_persons()
 
-        first_image = cv2.imread(first_path)
-        second_image = cv2.imread(second_path)
+        first_image = cv2.imread(self.images_path + first_path)
+        second_image = cv2.imread(self.images_path + second_path)
+        self.faceDetector(first_image)
+        self.faceDetector(second_image)
 
         first_face = self.faceDetector(first_image)
         first_face = cv2.resize(first_face, (IMG_HEIGHT, IMG_WIDTH))

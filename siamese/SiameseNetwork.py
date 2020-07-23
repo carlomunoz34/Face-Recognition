@@ -45,8 +45,15 @@ class FaceRecognition(nn.Module):
         return torch.norm(first_latent - second_latent, dim=-1)
 
     @torch.no_grad()
-    def predict(self, first_image: torch.Tensor, second_image: torch.Tensor,
-                threshold: float) -> torch.Tensor:
+    def predict(self, first_image: torch.Tensor, second_image: torch.Tensor) -> torch.Tensor:
+        """
+        Predict if the two images belongs to the same person
+        :param first_image: torch.Tensor
+            A batch with the first images
+        :param second_image: torch.Tensor
+            A batch with the second images
+        :return: torch.Tensor
+            The probabilities for each instance
+        """
         distance = self(first_image, second_image)
-
-        return torch.reshape(distance, (-1,))
+        return torch.round(torch.reshape(distance, (-1,)))
