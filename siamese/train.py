@@ -96,7 +96,7 @@ def train(model, train_set, test_set, epochs, learning_rate, cuda=True, start_ep
         print(f'Epoch: {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, ' +
               f'Test loss: {test_loss:.4f}. Saving model.')
 
-        torch.save(model.state_dict(), f'./models/siamese_{epoch+1}.pt')
+        torch.save(model.state_dict(), f'./models/{model.name}_{epoch}.pt')
 
         # early stopping
         if epoch > patience:
@@ -119,10 +119,10 @@ if __name__ == '__main__':
     start_epoch = 0
     model_path = glob("./models/*")[-1]
 
-    train_data = FacesDataset(train=True, half=False)
+    train_data = FacesDataset(train=True, validation=False)
     train_loader = DataLoader(train_data, batch_size, False)
 
-    test = FacesDataset(train=False, half=False)
+    test = FacesDataset(train=False, validation=False)
     test_loader = DataLoader(test, batch_size, False)
 
     siameseNetwork = FaceRecognition().cuda()

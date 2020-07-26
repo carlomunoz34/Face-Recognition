@@ -5,23 +5,21 @@ from glob import glob
 import numpy as np
 import pandas as pd
 from detector.FaceDetector import FaceDetector
-
-
-IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS = 224, 224, 3
+from utils.constants import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
 
 
 class FacesDataset(Dataset):
     """
     Dataset that contains tha pair of images of faces
     """
-    def __init__(self, train: bool = True, half: bool = False):
+    def __init__(self, train: bool = True, validation: bool = False):
         """
         Initialize the dataset
         :param train: bool
             True if is going to be the train set, false if is going
             to be the test set
-        :param half: bool
-            Indicates if the data will be in half precision
+        :param validation: bool
+            Indicates if the data will be the validation set
         """
         dataset_path = "/home/carlo/Documentos/Datasets/CelebA/"
         self.images_path = dataset_path + "img_align_celeba/"
@@ -39,10 +37,10 @@ class FacesDataset(Dataset):
 
         if train:
             self.files = files[:100000]
-        else:
+        elif not validation:
             self.files = files[100000: 120000]
-
-        self.half = half
+        elif validation:
+            self.files = files[120000: 140000]
 
     def __getitem__(self, item) -> (torch.Tensor, torch.Tensor, int):
         """
@@ -94,10 +92,6 @@ class FacesDataset(Dataset):
         second_face = second_face.transpose((2, 0, 1)) / 127.5 - 1
         second_face = torch.from_numpy(second_face.astype(np.float32))
         second_face = second_face.squeeze()
-
-        if self.half:
-            first_face = first_face.half()
-            second_face = second_face.half()
 
         return first_face, second_face, label
 
