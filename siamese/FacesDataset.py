@@ -14,12 +14,14 @@ class FacesDataset(Dataset):
     """
     Dataset that contains tha pair of images of faces
     """
-    def __init__(self, train: bool = True):
+    def __init__(self, train: bool = True, half: bool = False):
         """
         Initialize the dataset
         :param train: bool
             True if is going to be the train set, false if is going
             to be the test set
+        :param half: bool
+            Indicates if the data will be in half precision
         """
         dataset_path = "/home/carlo/Documentos/Datasets/CelebA/"
         self.images_path = dataset_path + "img_align_celeba/"
@@ -40,6 +42,8 @@ class FacesDataset(Dataset):
         else:
             self.files = files[100000: 120000]
 
+        self.half = half
+
     def __getitem__(self, item) -> (torch.Tensor, torch.Tensor, int):
         """
         Get two images and a label. There is 50% of probability for the image to be of
@@ -56,23 +60,44 @@ class FacesDataset(Dataset):
 
         if same_person > 0.5:  # It is going to be the same person
             label = 1
-            first_path, second_path = self.__get_same_person()
+            get = self.__get_same_person
 
         else:  # Two different persons
-            first_path, second_path = self.__get_different_persons()
+            get = self.__get_different_persons
 
-        first_image = cv2.imread(self.images_path + first_path)
-        second_image = cv2.imread(self.images_path + second_path)
-        self.faceDetector(first_image)
-        self.faceDetector(second_image)
+        while True:
+            first_path, second_path = get()
+            first_image = cv2.imread(self.images_path + first_path)
+            second_image = cv2.imread(self.images_path + second_path)
 
-        first_face = self.faceDetector(first_image)
-        first_face = cv2.resize(first_face, (IMG_HEIGHT, IMG_WIDTH))
-        first_face = torch.from_numpy(first_face)
+            first_face = self.faceDetector(first_image)
+            second_face = self.faceDetector(second_image)
 
-        second_face = self.faceDetector(second_image)
-        second_face = cv2.resize(second_face, (IMG_HEIGHT, IMG_WIDTH))
-        second_face = torch.from_numpy(second_face)
+            if len(first_face) == 0 or len(second_face) == 0:
+                continue
+
+            try:
+                first_face = cv2.resize(first_face, (IMG_HEIGHT, IMG_WIDTH))
+                second_face = cv2.resize(second_face, (IMG_HEIGHT, IMG_WIDTH))
+                break
+            except:
+                pass
+
+        first_face = cv2.cvtColor(first_face, cv2.COLOR_BGR2RGB)
+
+        second_face = cv2.cvtColor(second_face, cv2.COLOR_BGR2RGB)
+
+        first_face = first_face.transpose((2, 0, 1)) / 127.5 - 1
+        first_face = torch.from_numpy(first_face.astype(np.float32))
+        first_face = first_face.squeeze()
+
+        second_face = second_face.transpose((2, 0, 1)) / 127.5 - 1
+        second_face = torch.from_numpy(second_face.astype(np.float32))
+        second_face = second_face.squeeze()
+
+        if self.half:
+            first_face = first_face.half()
+            second_face = second_face.half()
 
         return first_face, second_face, label
 

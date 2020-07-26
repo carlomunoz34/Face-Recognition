@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torchvision.models import mobilenet_v2
+import os
 
 
 LATENT_DIM = 300
@@ -57,3 +58,16 @@ class FaceRecognition(nn.Module):
         """
         distance = self(first_image, second_image)
         return torch.round(torch.reshape(distance, (-1,)))
+
+    def load(self, path):
+        """
+        Loads a pretrained siamese model
+        :param path: str
+            The path that contains the pretrained model file
+        :return: FaceRecognition
+            The model with the weights loaded
+        """
+        if not os.path.isfile(path):
+            raise IOError(f"{path} is not a valid path!")
+        self.load_state_dict(torch.load(path))
+        return self
