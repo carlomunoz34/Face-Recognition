@@ -1,16 +1,14 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from siamese.SiameseNetwork import FaceRecognition
-from siamese.FacesDataset import FacesDataset
+from siamese import FaceRecognition
+from data import FacesDataset
 from tqdm import tqdm
 import sys
 import matplotlib.pyplot as plt
-from glob import glob
 
 
-def contrastive_loss(labels: torch.Tensor, predicted:torch.Tensor) -> torch.Tensor:
+def contrastive_loss(labels: torch.Tensor, predicted: torch.Tensor) -> torch.Tensor:
     """
     Loss for siamese networks
     :param labels: torch.Tensor
@@ -24,39 +22,49 @@ def contrastive_loss(labels: torch.Tensor, predicted:torch.Tensor) -> torch.Tens
     return torch.mean(labels * predicted * predicted + (1 - predicted) * no_match * no_match)
 
 
-def train(model, train_set, test_set, epochs, learning_rate, cuda=True, start_epoch=0,
-          patience: int = 5) -> (list, list):
+def train(model, train_set, test_set, epochs_, learning_rate, cuda=True, start_epoch_=0,
+          patience: int = 5, adam: bool = True) -> (list, list):
     """
-    Train a siamese network with Adam optimizer and contrastive loss.
+    Train a siamese network with Adam or RMSProp optimizer and contrastive loss.
     :param model: torch.nn.Module
         The Pytorch model to train
     :param train_set: DataLoader
         The data to train the model
     :param test_set: DataLoader
         The data to test the efficiency of the model
-    :param epochs: int
+    :param epochs_: int
         The number of epochs to train
     :param learning_rate: float
         Learning rate used during the train phase
     :param cuda: bool
         If the model is in cuda
-    :param start_epoch: int
+    :param start_epoch_: int
         To continue the training. Indicates in what epoch the current train will start.
     :param patience: int
         The number of epochs for early stopping to end the training process
+    :param adam: bool
+        If true, uses Adam as optimizer, if false uses RMSProp
     :return: (list, list)
         The train and test losses
     """
-    losses = []
-    test_losses = []
-    early_stopping_diff = 0.001
+    losses_ = []
+    test_losses_ = []
+    best_score = float("inf")
+    best_model = None
+    no_improvement = 0
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    if adam:
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    else:
+        optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     loss = contrastive_loss
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
-    for epoch in range(start_epoch, epochs):
+    epoch = start_epoch
+    while epoch < start_epoch + epochs:
         sys.stdout.flush()
         epoch_loss = 0
+
         for first_image, second_image, labels in tqdm(train_set, total=len(train_set),
                                                       desc='Train'):
             if cuda:
@@ -90,34 +98,49 @@ def train(model, train_set, test_set, epochs, learning_rate, cuda=True, start_ep
 
         epoch_loss /= len(train_set)
         test_loss /= len(test_set)
-        losses.append(epoch_loss)
-        test_losses.append(test_loss)
+        losses_.append(epoch_loss)
+        test_losses_.append(test_loss)
 
-        print(f'Epoch: {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, ' +
-              f'Test loss: {test_loss:.4f}. Saving model.')
+        message = f'Epoch: {epoch + 1}/{epochs_}, Loss: {epoch_loss:.4f}, ' + \
+                  f'Test loss: {test_loss:.4f}. Saving model.\n'
+        sys.stdout.write(message)
+
+        with open('./train.log', 'a') as f:
+            f.write(message)
 
         torch.save(model.state_dict(), f'./models/{model.name}_{epoch}.pt')
+        torch.save(lr_scheduler.state_dict(), f'./models/lr_scheduler_{epoch}.pt')
 
         # early stopping
-        if epoch > patience:
-            stop = True
-            past_test_loss = test_losses[-patience]
-            for test_loss in test_losses[-patience + 1:]:
-                if abs(past_test_loss - test_loss) > early_stopping_diff:
-                    stop = False
+        if test_loss < best_score:
+            no_improvement = 0
+            best_score = test_loss
+            best_model = model.state_dict()
+        else:
+            no_improvement += 1
 
-            if stop:
-                break
+        if no_improvement == patience:
+            diff = 10 - (epoch % 10)
+            epoch += diff
+            for j in range(diff):
+                lr_scheduler.step()
 
-    return losses, test_losses
+        else:
+            lr_scheduler.step()
+            epoch += 1
+
+    torch.save(best_model, './models/best-' + model.name)
+
+
+    return losses_, test_losses_
 
 
 if __name__ == '__main__':
-    lr = 0.0001
+    lr = 0.001
     batch_size = 128
     epochs = 30
     start_epoch = 0
-    model_path = glob("./models/*")[-1]
+    # model_to_load = "./models/model_3x512_300.pt"
 
     train_data = FacesDataset(train=True, validation=False)
     train_loader = DataLoader(train_data, batch_size, False)
@@ -125,12 +148,13 @@ if __name__ == '__main__':
     test = FacesDataset(train=False, validation=False)
     test_loader = DataLoader(test, batch_size, False)
 
-    siameseNetwork = FaceRecognition().cuda()
+    siameseNetwork = FaceRecognition(deep_model=True)\
+        .cuda()
 
     losses, test_losses = train(siameseNetwork, train_loader, test_loader, epochs, lr,
-                                start_epoch=start_epoch)
+                                start_epoch_=start_epoch, adam=False)
 
     plt.plot(losses, label='Train losses')
     plt.plot(test_losses, label='Test losses')
     plt.legend()
-    plt.savefig(f"losses {start_epoch}-{epochs}.png")
+    plt.savefig(f"losses {siameseNetwork.name}-{epochs}.png")

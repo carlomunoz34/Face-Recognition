@@ -5,16 +5,23 @@ import numpy as np
 from utils.constants import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
 
 
-def process_image(image: np.ndarray) -> np.ndarray:
+def process_image(image: np.ndarray, mean: list, std: list) -> np.ndarray:
     """
     Sort the dimensions to fit in the convolutional network
     :param image: np.ndarray
         The image to process
+    :param mean: list
+        List with the means to normalize the image
+    :param std: list
+        List with the standard deviation to normalize the image
     :return: np.ndarray
         The image processed
     """
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    return (image.transpose((2, 0, 1)) / 127.5 - 1).astype(np.float32)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) / 255.
+    # normalize
+    for channel in range(IMG_CHANNELS):
+        image[:, :, channel] = (image[:, :, channel] - mean[channel]) / std[channel]
+    return (image.transpose((2, 0, 1))).astype(np.float32)
 
 
 class ImageSelector:

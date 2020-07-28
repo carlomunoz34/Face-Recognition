@@ -79,18 +79,18 @@ class FaceRecognition(nn.Module):
         """
         distance = self(first_image, second_image)
 
-        predictions = torch.round(torch.reshape(distance, (-1,)))
+        predictions = torch.round(torch.reshape(distance, (-1,)) - 0.2)
 
-        # if 0, the images are from the same person. We need to change it to 1 (or True)
+        # if 0, the images are from the same person. We need to change it to 1
         predictions = (predictions == 0).int()
 
         return predictions
 
     def load(self, path):
         """
-        Loads a pretrained siamese model
+        Loads a pre trained siamese model
         :param path: str
-            The path that contains the pretrained model file
+            The path that contains the pre trained model file
         :return: FaceRecognition
             The model with the weights loaded
         """
