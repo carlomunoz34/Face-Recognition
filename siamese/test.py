@@ -76,8 +76,8 @@ def test_with_web_cam(model_to_test):
 
 
 if __name__ == '__main__':
-    best_model_path = './models/model_3x512_300.pt'
-    model = FaceRecognition(deep_model=True) \
+    best_model_path = 'models/mobilenet_3x512_300.pt'
+    model = FaceRecognition() \
         .load(best_model_path) \
         .cuda() \
         .initialize(cuda=True) \

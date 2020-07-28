@@ -131,7 +131,6 @@ def train(model, train_set, test_set, epochs_, learning_rate, cuda=True, start_e
 
     torch.save(best_model, './models/best-' + model.name)
 
-
     return losses_, test_losses_
 
 
@@ -140,7 +139,7 @@ if __name__ == '__main__':
     batch_size = 128
     epochs = 30
     start_epoch = 0
-    # model_to_load = "./models/model_3x512_300.pt"
+    # model_to_load = "./models/mobilenet_3x512_300.pt"
 
     train_data = FacesDataset(train=True, validation=False)
     train_loader = DataLoader(train_data, batch_size, False)
@@ -148,8 +147,7 @@ if __name__ == '__main__':
     test = FacesDataset(train=False, validation=False)
     test_loader = DataLoader(test, batch_size, False)
 
-    siameseNetwork = FaceRecognition(deep_model=True)\
-        .cuda()
+    siameseNetwork = FaceRecognition(base='inception').cuda()
 
     losses, test_losses = train(siameseNetwork, train_loader, test_loader, epochs, lr,
                                 start_epoch_=start_epoch, adam=False)

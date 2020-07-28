@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from torchvision.models import mobilenet_v2
+from torchvision.models import mobilenet_v2, inception_v3, resnet34
 from data.ImageSelector import ImageSelector
 import os
 import numpy as np
-from utils.constants import LATENT_DIM
+from utils.constants import LATENT_DIM, HIDDEN_SIZE
 
 
 class FaceRecognition(nn.Module):
@@ -13,44 +13,81 @@ class FaceRecognition(nn.Module):
     MobileNetV2 in order to make it faster
     """
 
-    def __init__(self, deep_model: bool = False):
+    def __init__(self, base: str = 'mobilenet'):
         """
         Initialize the siamese network and loads MobileNet
-        :param deep_model: bool
-            If true, the model will have a larger ANN
+        :param base: str
+            Choose the base model between:
+                'mobilenet' -> MobileNet V2,
+                'inception' -> Inception V3,
+                'resnet' -> ResNet 34
         """
         super().__init__()
 
-        self.mobileNet = mobilenet_v2(pretrained=True)
         self.initialized = False
         self.vectors = None
         self.is_cuda = False
 
-        # To not update the mobileNet weights during training
-        for parameter in self.mobileNet.parameters():
-            parameter.requires_grad = False
-
         # We are going to substitute the classifier with
         # a custom ANN to make the latent space
-        if deep_model:
-            self.name = f'model_3x512_{LATENT_DIM}'
-            self.mobileNet.classifier = nn.Sequential(
+        if base == 'mobilenet':
+            self.model = mobilenet_v2(pretrained=True)
+
+            for parameter in self.model.parameters():
+                parameter.requires_grad = False
+
+            self.model.classifier = nn.Sequential(
                 nn.Dropout(p=0.2, inplace=False),
-                nn.Linear(in_features=1280, out_features=512),
-                nn.BatchNorm1d(num_features=512),
+                nn.Linear(in_features=1280, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
                 nn.Dropout(p=0.2, inplace=False),
-                nn.Linear(in_features=512, out_features=512),
-                nn.BatchNorm1d(num_features=512),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
-                nn.Linear(in_features=512, out_features=LATENT_DIM)
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
             )
+
+        elif base == 'inception':
+            self.model = inception_v3(pretrained=True)
+
+            for parameter in self.model.parameters():
+                parameter.requires_grad = False
+
+            self.model.fc = nn.Sequential(
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=2048, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+            )
+
+        elif base == 'resnet':
+            self.model = resnet34(pretrained=True)
+
+            for parameter in self.model.parameters():
+                parameter.requires_grad = False
+
+            self.model.fc = nn.Sequential(
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+            )
+
         else:
-            self.name = f'model_{LATENT_DIM}'
-            self.mobileNet.classifier = nn.Sequential(
-                nn.Dropout(p=0.2, inplace=False),
-                nn.Linear(in_features=1280, out_features=LATENT_DIM)
-            )
+            raise ValueError('"base" is not a valid model')
+
+        self.name = f'{base}_{LATENT_DIM}'
 
     def forward(self, first_image: torch.Tensor, second_image: torch.Tensor) \
             -> torch.Tensor:
@@ -61,8 +98,8 @@ class FaceRecognition(nn.Module):
         :param second_image:
         :return:
         """
-        first_latent = self.mobileNet(first_image)
-        second_latent = self.mobileNet(second_image)
+        first_latent = self.model(first_image)
+        second_latent = self.model(second_image)
 
         return torch.norm(first_latent - second_latent, dim=-1)
 
@@ -112,7 +149,7 @@ class FaceRecognition(nn.Module):
         if self.is_cuda:
             faces = faces.cuda()
 
-        self.vectors = self.mobileNet(faces)
+        self.vectors = self.model(faces)
         self.initialized = True
         return self
 
@@ -129,7 +166,7 @@ class FaceRecognition(nn.Module):
         if self.is_cuda:
             face = face.cuda()
 
-        latent_vector = self.mobileNet(face)
+        latent_vector = self.model(face)
 
         idx, prediction = torch.max(torch.norm(self.vectors - latent_vector), 0)
         if prediction > 0.70:
