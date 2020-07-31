@@ -2,7 +2,7 @@ import cv2
 from detector.FaceDetector import FaceDetector
 import pandas as pd
 import numpy as np
-from utils.constants import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
+from utils.constants import MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH, IMG_CHANNELS
 
 
 def process_image(image: np.ndarray, mean: list, std: list) -> np.ndarray:
@@ -56,7 +56,7 @@ class ImageSelector:
             The face in that image
         """
         image = self.get_image_by_index(index)
-        return cv2.resize(self.face_detector(image), (IMG_HEIGHT, IMG_WIDTH))
+        return cv2.resize(self.face_detector(image), (MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH))
 
     def get_name_by_index(self, index) -> str:
         """
@@ -80,9 +80,9 @@ class ImageSelector:
         dataset_length = len(self.df)
 
         if pre_process:
-            faces = np.zeros((dataset_length, IMG_CHANNELS, IMG_HEIGHT, IMG_WIDTH), dtype=np.float32)
+            faces = np.zeros((dataset_length, IMG_CHANNELS, MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH), dtype=np.float32)
         else:
-            faces = np.zeros((dataset_length, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
+            faces = np.zeros((dataset_length, MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH, IMG_CHANNELS))
 
         for i in range(dataset_length):
             face = self.get_face_by_index(i)

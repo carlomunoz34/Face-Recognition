@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.models import mobilenet_v2, inception_v3, resnet34
+from torchvision.models import mobilenet_v2, inception_v3, resnet34, densenet161
 from data.ImageSelector import ImageSelector
 import os
 import numpy as np
@@ -20,7 +20,8 @@ class FaceRecognition(nn.Module):
             Choose the base model between:
                 'mobilenet' -> MobileNet V2,
                 'inception' -> Inception V3,
-                'resnet' -> ResNet 34
+                'resnet' -> ResNet 34,
+                'densenet' -> DenseNet 161
         """
         super().__init__()
 
@@ -49,7 +50,7 @@ class FaceRecognition(nn.Module):
             )
 
         elif base == 'inception':
-            self.model = inception_v3(pretrained=True)
+            self.model = inception_v3(pretrained=True, aux_logits=False)
 
             for parameter in self.model.parameters():
                 parameter.requires_grad = False
@@ -74,7 +75,25 @@ class FaceRecognition(nn.Module):
 
             self.model.fc = nn.Sequential(
                 nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=512, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Dropout(p=0.2, inplace=False),
                 nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+            )
+
+        elif base == 'densenet':
+            self.model = densenet161(pretrained=True)
+
+            for parameter in self.model.parameters():
+                parameter.requires_grad = False
+
+            self.model.classifier = nn.Sequential(
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=2208, out_features=HIDDEN_SIZE),
                 nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
                 nn.Dropout(p=0.2, inplace=False),
@@ -88,15 +107,19 @@ class FaceRecognition(nn.Module):
             raise ValueError('"base" is not a valid model')
 
         self.name = f'{base}_{LATENT_DIM}'
+        self.base = base
 
     def forward(self, first_image: torch.Tensor, second_image: torch.Tensor) \
             -> torch.Tensor:
         """
         A step through the network. Both images are passed and the output is
         the norm distance between these to outputs
-        :param first_image:
-        :param second_image:
-        :return:
+        :param first_image: torch.Tensor
+            The first image to process
+        :param second_image: torch.Tensor
+            The second image to process
+        :return: torch.Tensor
+            The norm of the difference between the two processed images
         """
         first_latent = self.model(first_image)
         second_latent = self.model(second_image)
@@ -151,6 +174,7 @@ class FaceRecognition(nn.Module):
 
         self.vectors = self.model(faces)
         self.initialized = True
+        self.eval()
         return self
 
     def get_database_prediction(self, face: np.ndarray) -> int:
@@ -173,3 +197,31 @@ class FaceRecognition(nn.Module):
             return idx.item()
 
         return -1
+
+    def prepare_for_fine_tuning(self):
+        if self.base == 'mobilenet':
+            for parameter in self.model.features[17].parameters():
+                parameter.requires_grad = True
+
+        elif self.base == 'inception':
+            for parameter in self.model.Mixed_7c.parameters():
+                parameter.requires_grad = True
+
+        elif self.base == 'resnet':
+            for parameter in self.model.layer4[1:].parameters():
+                parameter.requires_grad = True
+
+        elif self.base == 'densenet':
+            for parameter in self.model.features.denseblock4.denselayer23.parameters():
+                parameter.requires_grad = True
+            for parameter in self.model.features.denseblock4.denselayer24.parameters():
+                parameter.requires_grad = True
+
+        else:
+            raise ValueError('"base" is not a valid model')
+
+
+if __name__ == '__main__':
+    for base in ['mobilenet', 'inception', 'resnet', 'densenet']:
+        model = FaceRecognition(base)
+        model.prepare_for_fine_tuning()

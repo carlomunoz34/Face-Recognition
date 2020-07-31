@@ -18,12 +18,12 @@ def contrastive_loss(labels: torch.Tensor, predicted: torch.Tensor) -> torch.Ten
     :return: torch.Tensor
         A tensor with just one element containing the loss
     """
-    no_match = F.relu(1 - labels)  # max(margin - y, 0)
-    return torch.mean(labels * predicted * predicted + (1 - predicted) * no_match * no_match)
+    no_match = F.relu(1 - predicted)  # max(margin - y, 0)
+    return torch.mean(labels * predicted * predicted + (1 - labels) * no_match * no_match)
 
 
-def train(model, train_set, test_set, epochs_, learning_rate, cuda=True, start_epoch_=0,
-          patience: int = 5, adam: bool = True) -> (list, list):
+def train(model, train_set, test_set, epochs_, learning_rate, model_name: str, cuda=True, start_epoch_=0,
+          adam: bool = True, patience: int = 5) -> (list, list):
     """
     Train a siamese network with Adam or RMSProp optimizer and contrastive loss.
     :param model: torch.nn.Module
@@ -36,14 +36,16 @@ def train(model, train_set, test_set, epochs_, learning_rate, cuda=True, start_e
         The number of epochs to train
     :param learning_rate: float
         Learning rate used during the train phase
+    :param model_name> str
+        Specify the model name, just to save the files correctly
     :param cuda: bool
         If the model is in cuda
     :param start_epoch_: int
         To continue the training. Indicates in what epoch the current train will start.
-    :param patience: int
-        The number of epochs for early stopping to end the training process
     :param adam: bool
         If true, uses Adam as optimizer, if false uses RMSProp
+    :param patience: int
+        The number of epochs used in the early stopping
     :return: (list, list)
         The train and test losses
     """
@@ -51,7 +53,7 @@ def train(model, train_set, test_set, epochs_, learning_rate, cuda=True, start_e
     test_losses_ = []
     best_score = float("inf")
     best_model = None
-    no_improvement = 0
+    not_improved = 0
 
     if adam:
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -60,8 +62,7 @@ def train(model, train_set, test_set, epochs_, learning_rate, cuda=True, start_e
     loss = contrastive_loss
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
-    epoch = start_epoch
-    while epoch < start_epoch + epochs:
+    for epoch in range(start_epoch_, epochs):
         sys.stdout.flush()
         epoch_loss = 0
 
@@ -102,34 +103,30 @@ def train(model, train_set, test_set, epochs_, learning_rate, cuda=True, start_e
         test_losses_.append(test_loss)
 
         message = f'Epoch: {epoch + 1}/{epochs_}, Loss: {epoch_loss:.4f}, ' + \
-                  f'Test loss: {test_loss:.4f}. Saving model.\n'
+                  f'Test loss: {test_loss:.4f}.\n'
         sys.stdout.write(message)
 
-        with open('./train.log', 'a') as f:
+        with open(f'./train_{model_name}.log', 'a') as f:
             f.write(message)
+            f.close()
 
-        torch.save(model.state_dict(), f'./models/{model.name}_{epoch}.pt')
+        torch.save(model.state_dict(), f'./models/{model_name}_{epoch}.pt')
         torch.save(lr_scheduler.state_dict(), f'./models/lr_scheduler_{epoch}.pt')
 
-        # early stopping
+        # Get the best model
         if test_loss < best_score:
-            no_improvement = 0
             best_score = test_loss
             best_model = model.state_dict()
-        else:
-            no_improvement += 1
-
-        if no_improvement == patience:
-            diff = 10 - (epoch % 10)
-            epoch += diff
-            for j in range(diff):
-                lr_scheduler.step()
+            not_improved = 0
 
         else:
-            lr_scheduler.step()
-            epoch += 1
+            not_improved += 1
 
-    torch.save(best_model, './models/best-' + model.name)
+        # Early stopping
+        if not_improved == patience:
+            break
+
+    torch.save(best_model, './models/best-' + model_name + '.pt')
 
     return losses_, test_losses_
 
@@ -139,20 +136,38 @@ if __name__ == '__main__':
     batch_size = 128
     epochs = 30
     start_epoch = 0
-    # model_to_load = "./models/mobilenet_3x512_300.pt"
+    bases = ['inception', 'resnet', 'densenet', 'mobilenet']
+    for base in bases:
+        train_data = FacesDataset(train=True, validation=False, base=base)
+        train_loader = DataLoader(train_data, batch_size, False)
 
-    train_data = FacesDataset(train=True, validation=False)
-    train_loader = DataLoader(train_data, batch_size, False)
+        test = FacesDataset(train=False, validation=False, base=base)
+        test_loader = DataLoader(test, batch_size, False)
 
-    test = FacesDataset(train=False, validation=False)
-    test_loader = DataLoader(test, batch_size, False)
+        siameseNetwork = FaceRecognition(base=base).cuda()
+        model_name_ = siameseNetwork.name
 
-    siameseNetwork = FaceRecognition(base='inception').cuda()
+        print("Starting train of", base)
+        losses, test_losses = train(siameseNetwork, train_loader, test_loader, epochs, lr,
+                                    model_name_, start_epoch_=start_epoch, adam=False)
 
-    losses, test_losses = train(siameseNetwork, train_loader, test_loader, epochs, lr,
-                                start_epoch_=start_epoch, adam=False)
+        plt.plot(losses, label='Train losses')
+        plt.plot(test_losses, label='Test losses')
+        plt.legend()
+        plt.savefig(f"losses_{siameseNetwork.name}.png")
 
-    plt.plot(losses, label='Train losses')
-    plt.plot(test_losses, label='Test losses')
-    plt.legend()
-    plt.savefig(f"losses {siameseNetwork.name}-{epochs}.png")
+        # Fine tune the model
+        print("Starting fine tune of", base)
+        ft_lr = lr * 0.01
+        ft_epochs = 30
+        ft_start_epoch = 0
+        siameseNetwork.prepare_for_fine_tuning()
+        model_name_ += '_ft'
+
+        losses, test_losses = train(siameseNetwork, train_loader, test_loader, ft_epochs, ft_lr,
+                                    start_epoch_=ft_start_epoch, adam=False, fine_tune=True)
+
+        plt.plot(losses, label='Train losses')
+        plt.plot(test_losses, label='Test losses')
+        plt.legend()
+        plt.savefig(f"losses_{siameseNetwork.name}_ft.png")

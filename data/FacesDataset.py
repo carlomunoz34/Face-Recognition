@@ -5,7 +5,10 @@ from glob import glob
 import numpy as np
 import pandas as pd
 from detector.FaceDetector import FaceDetector
-from utils.constants import IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS
+from utils.constants import MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH
+from utils.constants import INCEPTION_IMG_HEIGHT, INCEPTION_IMG_WIDTH
+from utils.constants import RESNET_IMG_HEIGHT, RESNET_IMG_WIDTH
+from utils.constants import DENSENET_IMG_HEIGHT, DENSENET_IMG_WIDTH
 from . import process_image
 
 
@@ -13,7 +16,7 @@ class FacesDataset(Dataset):
     """
     Dataset that contains tha pair of images of faces
     """
-    def __init__(self, train: bool = True, validation: bool = False):
+    def __init__(self, train: bool = True, validation: bool = False, base: str = 'mobilenet'):
         """
         Initialize the dataset
         :param train: bool
@@ -42,6 +45,8 @@ class FacesDataset(Dataset):
             self.files = files[100000: 120000]
         elif validation:
             self.files = files[120000: 140000]
+
+        self.base = base
 
     def __getitem__(self, item) -> (torch.Tensor, torch.Tensor, int):
         """
@@ -76,8 +81,27 @@ class FacesDataset(Dataset):
                 continue
 
             try:
-                first_face = cv2.resize(first_face, (IMG_HEIGHT, IMG_WIDTH))
-                second_face = cv2.resize(second_face, (IMG_HEIGHT, IMG_WIDTH))
+                if self.base == 'mobilenet':
+                    height = MOBILENET_IMG_HEIGHT
+                    width = MOBILENET_IMG_WIDTH
+
+                elif self.base == 'inception':
+                    height = INCEPTION_IMG_HEIGHT
+                    width = INCEPTION_IMG_WIDTH
+
+                elif self.base == 'resnet':
+                    height = RESNET_IMG_HEIGHT
+                    width = RESNET_IMG_WIDTH
+
+                elif self.base == 'densenet':
+                    height = DENSENET_IMG_HEIGHT
+                    width = DENSENET_IMG_WIDTH
+
+                else:
+                    raise ValueError("base in not valid")
+
+                first_face = cv2.resize(first_face, (height, width))
+                second_face = cv2.resize(second_face, (height, width))
                 break
             except:
                 pass
