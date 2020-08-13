@@ -1,13 +1,14 @@
 import torch
 import torch.nn as nn
-from torchvision.models import mobilenet_v2, inception_v3, resnet34, densenet161
+from torchvision.models import mobilenet_v2, inception_v3, resnet34, resnet101, densenet161
 from data.ImageSelector import ImageSelector
 import os
 import numpy as np
 from utils.constants import LATENT_DIM, HIDDEN_SIZE
+from .predictors import LinearPredictor
 
 
-class FaceRecognition(nn.Module):
+class SiameseNetwork(nn.Module):
     """
     Face recognition model implemented with a siamese network with a
     MobileNetV2 in order to make it faster
@@ -85,6 +86,24 @@ class FaceRecognition(nn.Module):
                 nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
             )
 
+        elif base == 'resnet101':
+            self.model = resnet101(pretrained=True)
+
+            for parameter in self.model.parameters():
+                parameter.requires_grad = False
+
+            self.model.fc = nn.Sequential(
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=2048, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+            )
+
         elif base == 'densenet':
             self.model = densenet161(pretrained=True)
 
@@ -127,7 +146,7 @@ class FaceRecognition(nn.Module):
         return torch.norm(first_latent - second_latent, dim=-1)
 
     @torch.no_grad()
-    def predict(self, first_image: torch.Tensor, second_image: torch.Tensor) -> torch.Tensor:
+    def  super(self, first_image: torch.Tensor, second_image: torch.Tensor) -> torch.Tensor:
         """
         Predict if the two images belongs to the same person
         :param first_image: torch.Tensor
@@ -139,7 +158,7 @@ class FaceRecognition(nn.Module):
         """
         distance = self(first_image, second_image)
 
-        predictions = torch.round(torch.reshape(distance, (-1,)) - 0.2)
+        predictions = torch.round(torch.reshape(distance, (-1,)))
 
         # if 0, the images are from the same person. We need to change it to 1
         predictions = (predictions == 0).int()
@@ -159,12 +178,15 @@ class FaceRecognition(nn.Module):
         self.load_state_dict(torch.load(path))
         return self
 
-    def initialize(self, cuda: bool = False):
+    def initialize(self, predictor: LinearPredictor, cuda: bool = False, half: bool = False):
         """
         initialize the network to have a faster performance with the database
+        :param half: bool
+            Specify if the device is half
         :param cuda: bool
             Specify if the device is cuda
-        :return:
+        :param predictor: Predictor
+            The predictor to calculate the actual probabilities during inference
         """
         self.is_cuda = cuda
         image_selector = ImageSelector()
@@ -172,12 +194,16 @@ class FaceRecognition(nn.Module):
         if self.is_cuda:
             faces = faces.cuda()
 
+        if half:
+            faces = faces.half()
+
         self.vectors = self.model(faces)
         self.initialized = True
         self.eval()
+        self.predictor = predictor
         return self
 
-    def get_database_prediction(self, face: np.ndarray) -> int:
+    def get_database_prediction(self, face: np.ndarray) -> (int, torch.Tensor):
         """
         Predict if the passes face belong to some one in the database
         :param face: np.ndarray
@@ -192,36 +218,44 @@ class FaceRecognition(nn.Module):
 
         latent_vector = self.model(face)
 
-        idx, prediction = torch.max(torch.norm(self.vectors - latent_vector), 0)
-        if prediction > 0.70:
-            return idx.item()
-
-        return -1
+        norm = torch.norm(self.vectors - latent_vector, dim=1)
+        prediction = self.predictor.predict(norm)
+        prob = torch.max(prediction)
+        index = torch.argmax(prediction)
+        return index, prob
 
     def prepare_for_fine_tuning(self):
+        """
+        Unfreeze the last layers of the convolutional base in order to train in
+        fine tuning way
+        """
         if self.base == 'mobilenet':
-            for parameter in self.model.features[17].parameters():
+            for parameter in self.model.features[13:].parameters():
                 parameter.requires_grad = True
 
         elif self.base == 'inception':
+            for parameter in self.model.Mixed_7a.parameters():
+                parameter.requires_grad = True
+            for parameter in self.model.Mixed_7b.parameters():
+                parameter.requires_grad = True
             for parameter in self.model.Mixed_7c.parameters():
                 parameter.requires_grad = True
 
         elif self.base == 'resnet':
-            for parameter in self.model.layer4[1:].parameters():
+            for parameter in self.model.layer4.parameters():
+                parameter.requires_grad = True
+            for parameter in self.model.layer3[18:].parameters():
+                parameter.requires_grad = True
+
+        elif self.base == 'resnet101':
+            for parameter in self.model.layer4.parameters():
+                parameter.requires_grad = True
+            for parameter in self.model.layer3[3:].parameters():
                 parameter.requires_grad = True
 
         elif self.base == 'densenet':
-            for parameter in self.model.features.denseblock4.denselayer23.parameters():
-                parameter.requires_grad = True
-            for parameter in self.model.features.denseblock4.denselayer24.parameters():
+            for parameter in self.model.features.denseblock4.parameters():
                 parameter.requires_grad = True
 
         else:
             raise ValueError('"base" is not a valid model')
-
-
-if __name__ == '__main__':
-    for base in ['mobilenet', 'inception', 'resnet', 'densenet']:
-        model = FaceRecognition(base)
-        model.prepare_for_fine_tuning()

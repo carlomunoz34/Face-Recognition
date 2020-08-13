@@ -1,16 +1,17 @@
-from siamese import FaceRecognition
-from detector import FaceDetector
-from data import ImageSelector, process_image, FacesDataset
+from siamese import SiameseNetwork
+from siamese.predictors import LinearPredictor
+from data import FacesDataset
 from sklearn.metrics import confusion_matrix, classification_report
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-import cv2
+from datetime import datetime
 
 
-def test_with_val_data(model_to_test: FaceRecognition, cuda: bool = True) -> (np.ndarray, str):
-    val_dataset = FacesDataset(False, True)
-    batch_size = 128
+def test_with_val_data(model_to_test: SiameseNetwork, predictor: LinearPredictor, cuda: bool = True,
+                       half: bool = False) -> (np.ndarray, str):
+    val_dataset = FacesDataset(False, True, base=model_to_test.base)
+    batch_size = 16
     val_loader = DataLoader(
         val_dataset,
         shuffle=False,
@@ -26,13 +27,18 @@ def test_with_val_data(model_to_test: FaceRecognition, cuda: bool = True) -> (np
             first_face = first_face.cuda()
             second_face = second_face.cuda()
 
+        if half:
+            first_face = first_face.half()
+            second_face = second_face.half()
+
         labels = labels.numpy()
         labels_len = len(labels)
         all_labels[idx * labels_len: (idx + 1) * labels_len] = labels
 
-        predictions = model_to_test.predict(first_face, second_face).cpu().numpy()
+        norms = model_to_test(first_face, second_face)
+        predictions = predictor.predict(norms.unsqueeze(1)).detach().cpu().numpy()
         predictions_len = len(predictions)
-        all_predictions[idx * predictions_len: (idx + 1) * predictions_len] = predictions
+        all_predictions[idx * predictions_len: (idx + 1) * predictions_len] = np.round(predictions.squeeze())
 
     cm = confusion_matrix(all_labels, all_predictions)
     report = classification_report(all_labels, all_predictions)
@@ -40,51 +46,18 @@ def test_with_val_data(model_to_test: FaceRecognition, cuda: bool = True) -> (np
     return cm, report
 
 
-def test_with_web_cam(model_to_test):
-    cap = cv2.VideoCapture(0)
-    detector = FaceDetector()
-    selector = ImageSelector()
-
-    while True:
-        ret, frame = cap.read()
-        font = cv2.FONT_HERSHEY_PLAIN
-        faces, start_xs, start_ys, end_xs, end_ys = detector.get_all_faces(frame)
-
-        for face, start_x, start_y, end_x, end_y in zip(faces, start_xs, start_ys, end_xs, end_ys):
-            try:
-                face = process_image(face, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            except:
-                break
-            face = np.expand_dims(face, 0)
-            prediction = model_to_test.get_database_prediction(face)
-            if prediction != -1:
-                name = selector.get_name_by_index(prediction)
-            else:
-                name = 'Unknown'
-
-            cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), (0, 0, 255), 2)
-            cv2.putText(frame, name, (start_x, start_y), font, 2, (255, 0, 0), 2)
-
-        cv2.imshow("Camera", frame)
-
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
-            break
-
-    cv2.destroyAllWindows()
-    cap.release()
-
-
 if __name__ == '__main__':
-    best_model_path = 'models/best-mobilenet.pt'
-    model = FaceRecognition() \
-        .load(best_model_path) \
-        .cuda() \
-        .initialize(cuda=True) \
-        .eval()
+    model = SiameseNetwork(base='resnet101').cuda()
+    best_model_path = f'./models/triplet/resnet101.pt'
+    model.load(best_model_path)
+    model.eval()
+    predictor_ = LinearPredictor().cuda()
+    predictor_.load('./models/predictor-linear.pt')
+    predictor_.eval()
 
-    # conf_matrix, report = test_with_val_data(model)
-    # print(conf_matrix)
-    # print(report)
-
-    test_with_web_cam(model)
+    t0 = datetime.now()
+    conf_matrix, report_ = test_with_val_data(model, predictor_)
+    total_time = datetime.now() - t0
+    print('Elapsed time:', total_time)
+    print(conf_matrix)
+    print(report_)

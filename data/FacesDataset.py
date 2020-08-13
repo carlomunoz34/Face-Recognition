@@ -4,7 +4,6 @@ import cv2
 from glob import glob
 import numpy as np
 import pandas as pd
-from detector.FaceDetector import FaceDetector
 from utils.constants import MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH
 from utils.constants import INCEPTION_IMG_HEIGHT, INCEPTION_IMG_WIDTH
 from utils.constants import RESNET_IMG_HEIGHT, RESNET_IMG_WIDTH
@@ -16,6 +15,7 @@ class FacesDataset(Dataset):
     """
     Dataset that contains tha pair of images of faces
     """
+
     def __init__(self, train: bool = True, validation: bool = False, base: str = 'mobilenet'):
         """
         Initialize the dataset
@@ -26,18 +26,25 @@ class FacesDataset(Dataset):
             Indicates if the data will be the validation set
         """
         dataset_path = "/home/carlo/Documentos/Datasets/CelebA/"
-        self.images_path = dataset_path + "img_align_celeba/"
+        self.images_path = dataset_path + "img_celeba/"
         files = glob(self.images_path + "*")
         self.train = train
         table = pd.read_csv(dataset_path + "identity_CelebA.csv").values
         self.images = dict()
-        self.faceDetector = FaceDetector()
+        boxes_table = pd.read_csv(dataset_path + "list_bbox_celeba.csv").values
+        self.boxes = dict()
 
         for file, idx in table:
             if idx not in self.images:
                 self.images[idx] = [file]
             else:
                 self.images[idx].append(file)
+
+        for file, x1, y1, width, height in boxes_table:
+            x2 = x1 + width
+            y2 = y1 + height
+            if file not in self.boxes:
+                self.boxes[file] = [x1, y1, x2, y2]
 
         if train:
             self.files = files[:100000]
@@ -74,8 +81,11 @@ class FacesDataset(Dataset):
             first_image = cv2.imread(self.images_path + first_path)
             second_image = cv2.imread(self.images_path + second_path)
 
-            first_face = self.faceDetector(first_image)
-            second_face = self.faceDetector(second_image)
+            first_x1, first_y1, first_x2, first_y2 = self.boxes[first_path]
+            second_x1, second_y1, second_x2, second_y2 = self.boxes[second_path]
+
+            first_face = first_image[first_y1: first_y2, first_x1: first_x2]
+            second_face = second_image[second_y1: second_y2, second_x1: second_x2]
 
             if len(first_face) == 0 or len(second_face) == 0:
                 continue
@@ -89,7 +99,7 @@ class FacesDataset(Dataset):
                     height = INCEPTION_IMG_HEIGHT
                     width = INCEPTION_IMG_WIDTH
 
-                elif self.base == 'resnet':
+                elif self.base == 'resnet' or 'resnet101':
                     height = RESNET_IMG_HEIGHT
                     width = RESNET_IMG_WIDTH
 
@@ -128,7 +138,6 @@ class FacesDataset(Dataset):
         :return: (str, str)
             The paths to the images
         """
-        idx = 0
         while True:
             idx = np.random.choice(list(self.images.keys()))
 

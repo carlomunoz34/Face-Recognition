@@ -1,1 +1,1 @@
-from .SiameseNetwork import FaceRecognition
+from .SiameseNetwork import SiameseNetwork

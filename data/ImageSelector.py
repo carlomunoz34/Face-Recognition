@@ -34,7 +34,8 @@ class ImageSelector:
         Initialize the instance.
         """
         self.face_detector = FaceDetector()
-        self.df = pd.read_csv('../data/persons.csv')
+        self.data_path = './data/'
+        self.df = pd.read_csv(self.data_path + 'persons.csv')
 
     def get_image_by_index(self, index: int) -> np.ndarray:
         """
@@ -45,7 +46,7 @@ class ImageSelector:
             The image of that person
         """
         image_path = self.df['file'][index]
-        return cv2.imread("../data/" + image_path)
+        return cv2.imread(self.data_path + image_path)
 
     def get_face_by_index(self, index: int) -> np.ndarray:
         """
@@ -80,7 +81,8 @@ class ImageSelector:
         dataset_length = len(self.df)
 
         if pre_process:
-            faces = np.zeros((dataset_length, IMG_CHANNELS, MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH), dtype=np.float32)
+            faces = np.zeros((dataset_length, IMG_CHANNELS, MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH),
+                             dtype=np.float32)
         else:
             faces = np.zeros((dataset_length, MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH, IMG_CHANNELS))
 
@@ -88,7 +90,7 @@ class ImageSelector:
             face = self.get_face_by_index(i)
 
             if pre_process:
-                faces[i] = process_image(face)
+                faces[i] = process_image(face, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             else:
                 faces[i] = face
 
