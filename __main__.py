@@ -11,6 +11,7 @@ def web_cam(model_to_test):
     cap = cv2.VideoCapture(0)
     detector = FaceDetector()
     selector = ImageSelector()
+    names = []
 
     while True:
         ret, frame = cap.read()
@@ -27,11 +28,14 @@ def web_cam(model_to_test):
             prediction, prob = model_to_test.get_database_prediction(face)
             if prob > 0.5:
                 name = selector.get_name_by_index(prediction.item())
+                if name not in names:
+                    names.append(name)
+                    print(name)
             else:
                 name = 'Unknown'
 
             cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), (0, 0, 255), 2)
-            cv2.putText(frame, f"{name}:{prob * 100: .2f}%", (start_x, start_y), font, 0.5, (255, 0, 0), 1)
+            cv2.putText(frame, f"{name}:{prob * 100: .2f}%", (start_x, start_y - 2), font, 0.5, (255, 255, 255), 1)
 
         cv2.imshow("Camera", frame)
 

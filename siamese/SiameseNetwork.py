@@ -14,7 +14,7 @@ class SiameseNetwork(nn.Module):
     MobileNetV2 in order to make it faster
     """
 
-    def __init__(self, base: str = 'mobilenet'):
+    def __init__(self, base: str = 'mobilenet', load_weights=True):
         """
         Initialize the siamese network and loads MobileNet
         :param base: str
@@ -33,7 +33,7 @@ class SiameseNetwork(nn.Module):
         # We are going to substitute the classifier with
         # a custom ANN to make the latent space
         if base == 'mobilenet':
-            self.model = mobilenet_v2(pretrained=True)
+            self.model = mobilenet_v2(pretrained=load_weights)
 
             for parameter in self.model.parameters():
                 parameter.requires_grad = False
@@ -51,7 +51,7 @@ class SiameseNetwork(nn.Module):
             )
 
         elif base == 'inception':
-            self.model = inception_v3(pretrained=True, aux_logits=False)
+            self.model = inception_v3(pretrained=load_weights, aux_logits=False)
 
             for parameter in self.model.parameters():
                 parameter.requires_grad = False
@@ -69,7 +69,7 @@ class SiameseNetwork(nn.Module):
             )
 
         elif base == 'resnet':
-            self.model = resnet34(pretrained=True)
+            self.model = resnet34(pretrained=load_weights)
 
             for parameter in self.model.parameters():
                 parameter.requires_grad = False
@@ -87,7 +87,7 @@ class SiameseNetwork(nn.Module):
             )
 
         elif base == 'resnet101':
-            self.model = resnet101(pretrained=True)
+            self.model = resnet101(pretrained=load_weights)
 
             for parameter in self.model.parameters():
                 parameter.requires_grad = False
@@ -105,7 +105,7 @@ class SiameseNetwork(nn.Module):
             )
 
         elif base == 'densenet':
-            self.model = densenet161(pretrained=True)
+            self.model = densenet161(pretrained=load_weights)
 
             for parameter in self.model.parameters():
                 parameter.requires_grad = False
@@ -124,6 +124,10 @@ class SiameseNetwork(nn.Module):
 
         else:
             raise ValueError('"base" is not a valid model')
+
+        if not load_weights:
+            for param in self.model.parameters():
+                param.requires_grad = True
 
         self.name = f'{base}_{LATENT_DIM}'
         self.base = base

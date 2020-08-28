@@ -6,6 +6,7 @@ from data import FaceTriplet
 from tqdm import tqdm
 import sys
 import matplotlib.pyplot as plt
+import copy
 
 
 def train(model, train_set, test_set, epochs_, learning_rate, model_name: str, cuda=True, start_epoch_=0,
@@ -115,7 +116,7 @@ def train(model, train_set, test_set, epochs_, learning_rate, model_name: str, c
         # Get the best model
         if test_loss < best_score:
             best_score = test_loss
-            best_model = model.state_dict()
+            best_model = copy.deepcopy(model.state_dict())
             not_improved = 0
 
         else:
@@ -135,29 +136,25 @@ def train(model, train_set, test_set, epochs_, learning_rate, model_name: str, c
 
 if __name__ == '__main__':
     lr = 0.001
-    batch_size = 32
+    batch_size = 16
     epochs = -1
     start_epoch = 0
 
-    bases = ['densenet', 'resnet101', 'inception', 'mobilenet']
+    # bases = ['densenet', 'resnet101', 'inception', 'mobilenet']
+    bases = ['resnet101']
     for base in bases:
-        if base == 'densenet':
-            batch_size = 16
-        else:
-            batch_size = 32
-
         train_data = FaceTriplet(train=True, base=base)
         train_loader = DataLoader(train_data, batch_size, False)
 
         test = FaceTriplet(train=False, base=base)
         test_loader = DataLoader(test, batch_size, False)
 
-        siameseNetwork = SiameseNetwork(base=base).cuda()
-        model_name_ = siameseNetwork.name
+        siameseNetwork = SiameseNetwork(base=base, load_weights=False).cuda()
+        model_name_ = siameseNetwork.name + "_no_transfer"
 
         sys.stdout.write(f"Starting train of {base}\n")
         losses, test_losses = train(siameseNetwork, train_loader, test_loader, epochs, lr,
-                                    model_name_, start_epoch_=start_epoch, adam=False, patience=7)
+                                    model_name_, start_epoch_=start_epoch, adam=False, patience=10)
 
         plt.plot(losses, label='Train losses')
         plt.plot(test_losses, label='Test losses')
@@ -166,19 +163,19 @@ if __name__ == '__main__':
         plt.clf()
 
         # Fine tune the model
-        sys.stdout.write(f"Starting fine tune of {base}\n")
-        ft_lr = lr * 0.01
-        ft_epochs = -1
-        ft_start_epoch = 0
-        siameseNetwork.load(f'./models/triplet/best-{model_name_}.pt')
-        siameseNetwork.prepare_for_fine_tuning()
-        model_name_ += '_ft'
-
-        losses, test_losses = train(siameseNetwork, train_loader, test_loader, ft_epochs, ft_lr,
-                                    model_name_, start_epoch_=ft_start_epoch, adam=False)
-
-        plt.plot(losses, label='Train losses')
-        plt.plot(test_losses, label='Test losses')
-        plt.legend()
-        plt.savefig(f"losses_{siameseNetwork.name}_ft.png")
-        plt.clf()
+        # sys.stdout.write(f"Starting fine tune of {base}\n")
+        # ft_lr = lr * 0.01
+        # ft_epochs = -1
+        # ft_start_epoch = 0
+        # siameseNetwork.load(f'./models/triplet/best-{model_name_}.pt')
+        # siameseNetwork.prepare_for_fine_tuning()
+        # model_name_ += '_ft'
+        #
+        # losses, test_losses = train(siameseNetwork, train_loader, test_loader, ft_epochs, ft_lr,
+        #                             model_name_, start_epoch_=ft_start_epoch, adam=False)
+        #
+        # plt.plot(losses, label='Train losses')
+        # plt.plot(test_losses, label='Test losses')
+        # plt.legend()
+        # plt.savefig(f"losses_{siameseNetwork.name}_ft.png")
+        # plt.clf()
