@@ -7,6 +7,8 @@ from data import FacesDataset
 from tqdm import tqdm
 import sys
 import matplotlib.pyplot as plt
+import os
+from utils.constants import LATENT_DIM
 
 
 def train(model, predictor, train_set, test_set, epochs_, learning_rate, model_name: str, cuda=True, start_epoch_=0,
@@ -160,32 +162,37 @@ if __name__ == '__main__':
     batch_size = 32
     epochs = 100
     start_epoch = 0
+    latent_dim = 4096
 
     train_data = FacesDataset(train=True, validation=False, base='resnet101')
-    train_loader = DataLoader(train_data, batch_size, False)
+    train_loader = DataLoader(train_data, batch_size, False, num_workers=8)
 
     test = FacesDataset(train=False, validation=False, base='resnet101')
-    test_loader = DataLoader(test, batch_size, False)
+    test_loader = DataLoader(test, batch_size, False, num_workers=14)
 
-    siamese_network = SiameseNetwork(base='resnet101').cuda()
-    siamese_network.load('./models/triplet/resnet101.pt')
-    siamese_network.eval()
+    models = ['./models/resnet152 2.pt', './models/resnet152 3.pt']
 
-    predictor_ = LinearPredictor().cuda()
+    for trained_model in models:
+        siamese_network = SiameseNetwork(base='resnet152', latent_dim=latent_dim).cuda()
+        siamese_network.load(trained_model)
+        siamese_network.eval()
 
-    sys.stdout.write('Training Linear predictor:\n')
-    losses, test_losses, train_accuracies_, test_accuracies_ = train(
-        siamese_network, predictor_, train_loader, test_loader, epochs, lr, 'predictor-linear',
-        start_epoch_=start_epoch, adam=False, patience=3)
+        predictor_ = LinearPredictor().cuda()
+        model_name = 'predictor-' + trained_model.split(os.sep)[-1]
 
-    plt.plot(losses, label='Train losses')
-    plt.plot(test_losses, label='Test losses')
-    plt.legend()
-    plt.savefig(f"losses_linear_predictor.png")
-    plt.clf()
+        sys.stdout.write('Training Linear predictor:\n')
+        losses, test_losses, train_accuracies_, test_accuracies_ = train(
+            siamese_network, predictor_, train_loader, test_loader, epochs, lr, model_name,
+            start_epoch_=start_epoch, adam=False, patience=5)
 
-    plt.plot(train_accuracies_, label='Train acc')
-    plt.plot(test_accuracies_, label='Test acc')
-    plt.legend()
-    plt.savefig(f"accuracies_linear_predictor.png")
-    plt.clf()
+        plt.plot(losses, label='Train losses')
+        plt.plot(test_losses, label='Test losses')
+        plt.legend()
+        plt.savefig(f"losses_linear_predictor {model_name}.png")
+        plt.clf()
+
+        plt.plot(train_accuracies_, label='Train acc')
+        plt.plot(test_accuracies_, label='Test acc')
+        plt.legend()
+        plt.savefig(f"accuracies_linear_predictor {model_name}.png")
+        plt.clf()

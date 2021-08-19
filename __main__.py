@@ -8,7 +8,7 @@ from utils.constants import RESNET_IMG_HEIGHT, RESNET_IMG_WIDTH
 
 
 def web_cam(model_to_test):
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     detector = FaceDetector()
     selector = ImageSelector()
     names = []
@@ -51,12 +51,11 @@ if __name__ == '__main__':
     best_model_path = './siamese/models/triplet/resnet101.pt'
     predictor_path = './siamese/models/predictor-linear.pt'
 
-    predictor = LinearPredictor().cuda().half()
+    predictor = LinearPredictor().cuda()
     predictor.load(predictor_path)
     model = SiameseNetwork(base='resnet101') \
         .load(best_model_path) \
         .cuda() \
-        .half() \
         .initialize(predictor, cuda=True, half=True)
 
     web_cam(model)

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.models import mobilenet_v2, inception_v3, resnet34, resnet101, densenet161
+from torchvision.models import mobilenet_v2, inception_v3, resnet34, resnet101, resnet152, densenet161, wide_resnet101_2
 from data.ImageSelector import ImageSelector
 import os
 import numpy as np
@@ -14,7 +14,7 @@ class SiameseNetwork(nn.Module):
     MobileNetV2 in order to make it faster
     """
 
-    def __init__(self, base: str = 'mobilenet', load_weights=True):
+    def __init__(self, base: str = 'mobilenet', load_weights=True, latent_dim=4096):
         """
         Initialize the siamese network and loads MobileNet
         :param base: str
@@ -47,7 +47,7 @@ class SiameseNetwork(nn.Module):
                 nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
                 nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
-                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=latent_dim)
             )
 
         elif base == 'inception':
@@ -65,7 +65,7 @@ class SiameseNetwork(nn.Module):
                 nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
                 nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
-                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=latent_dim)
             )
 
         elif base == 'resnet':
@@ -83,7 +83,7 @@ class SiameseNetwork(nn.Module):
                 nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
                 nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
-                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=latent_dim)
             )
 
         elif base == 'resnet101':
@@ -101,7 +101,43 @@ class SiameseNetwork(nn.Module):
                 nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
                 nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
-                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=latent_dim)
+            )
+
+        elif base == 'resnet152':
+            self.model = resnet152(pretrained=load_weights)
+
+            for parameter in self.model.parameters():
+                parameter.requires_grad = False
+
+            self.model.fc = nn.Sequential(
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=2048, out_features=HIDDEN_SIZE, bias=False),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE, bias=False),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=latent_dim)
+            )
+
+        elif base == 'wide_resnet':
+            self.model = wide_resnet101_2(pretrained=load_weights)
+
+            for parameter in self.model.parameters():
+                parameter.requires_grad = False
+
+            self.model.fc = nn.Sequential(
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=2048, out_features=HIDDEN_SIZE, bias=False),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Dropout(p=0.2, inplace=False),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE, bias=False),
+                nn.BatchNorm1d(num_features=HIDDEN_SIZE),
+                nn.SELU(),
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=latent_dim)
             )
 
         elif base == 'densenet':
@@ -119,7 +155,7 @@ class SiameseNetwork(nn.Module):
                 nn.Linear(in_features=HIDDEN_SIZE, out_features=HIDDEN_SIZE),
                 nn.BatchNorm1d(num_features=HIDDEN_SIZE),
                 nn.SELU(),
-                nn.Linear(in_features=HIDDEN_SIZE, out_features=LATENT_DIM)
+                nn.Linear(in_features=HIDDEN_SIZE, out_features=latent_dim)
             )
 
         else:
@@ -150,7 +186,7 @@ class SiameseNetwork(nn.Module):
         return torch.norm(first_latent - second_latent, dim=-1)
 
     @torch.no_grad()
-    def  super(self, first_image: torch.Tensor, second_image: torch.Tensor) -> torch.Tensor:
+    def super(self, first_image: torch.Tensor, second_image: torch.Tensor) -> torch.Tensor:
         """
         Predict if the two images belongs to the same person
         :param first_image: torch.Tensor
@@ -263,3 +299,62 @@ class SiameseNetwork(nn.Module):
 
         else:
             raise ValueError('"base" is not a valid model')
+
+    def deep_fine_tune(self, depth):
+        if self.base == 'resnet101':
+            if depth >= 1:
+                for parameter in self.model.layer4.parameters():
+                    parameter.requires_grad = True
+            if depth >= 2:
+                for parameter in self.model.layer3[20:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 3:
+                for parameter in self.model.layer3[17:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 4:
+                for parameter in self.model.layer3[14:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 5:
+                for parameter in self.model.layer3[11:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 6:
+                for parameter in self.model.layer3[8:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 7:
+                for parameter in self.model.layer3[5:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 8:
+                for parameter in self.model.layer3.parameters():
+                    parameter.requires_grad = True
+
+        if self.base == 'resnet152':
+            if depth >= 1:
+                for parameter in self.model.layer4.parameters():
+                    parameter.requires_grad = True
+            if depth >= 2:
+                for parameter in self.model.layer3[17:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 3:
+                for parameter in self.model.layer3.parameters():
+                    parameter.requires_grad = True
+            if depth >= 4:
+                for parameter in self.model.layer2.parameters():
+                    parameter.requires_grad = True
+                for parameter in self.model.layer1.parameters():
+                    parameter.requires_grad = True
+
+        if self.base == 'wide_resnet':
+            if depth >= 1:
+                for parameter in self.model.layer4.parameters():
+                    parameter.requires_grad = True
+            if depth >= 2:
+                for parameter in self.model.layer3[11:].parameters():
+                    parameter.requires_grad = True
+            if depth >= 3:
+                for parameter in self.model.layer3.parameters():
+                    parameter.requires_grad = True
+            if depth >= 4:
+                for parameter in self.model.layer2.parameters():
+                    parameter.requires_grad = True
+                for parameter in self.model.layer1.parameters():
+                    parameter.requires_grad = True
