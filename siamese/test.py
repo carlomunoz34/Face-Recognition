@@ -1,6 +1,7 @@
 from siamese import SiameseNetwork
 from siamese.predictors import LinearPredictor
-from data import FacesDataset
+import torch.nn as nn
+from data import FacesDataset, FaceTriplet
 from sklearn.metrics import confusion_matrix, classification_report
 import numpy as np
 from tqdm import tqdm
@@ -11,11 +12,12 @@ from datetime import datetime
 def test_with_val_data(model_to_test: SiameseNetwork, predictor: LinearPredictor, cuda: bool = True,
                        half: bool = False) -> (np.ndarray, str):
     val_dataset = FacesDataset(False, True, base=model_to_test.base)
-    batch_size = 16
+    batch_size = 64
     val_loader = DataLoader(
         val_dataset,
         shuffle=False,
-        batch_size=batch_size
+        batch_size=batch_size,
+        num_workers=14
     )
     set_length = len(val_dataset)
     all_predictions = np.zeros((set_length,))
@@ -46,18 +48,47 @@ def test_with_val_data(model_to_test: SiameseNetwork, predictor: LinearPredictor
     return cm, report
 
 
+def test_loss(model_to_test: SiameseNetwork, cuda: bool = True):
+    val_dataset = FaceTriplet(train=False, base='resnet')
+    batch_size = 16
+    val_loader = DataLoader(
+        val_dataset,
+        shuffle=False,
+        batch_size=batch_size,
+        num_workers=14
+    )
+
+    loss = nn.TripletMarginLoss()
+    total_loss = 0
+    for idx, (anchor, positive, negative) in tqdm(enumerate(val_loader), total=len(val_loader),
+                                                  desc='Validation'):
+        if cuda:
+            anchor = anchor.cuda()
+            positive = positive.cuda()
+            negative = negative.cuda()
+
+        anchor_vector = model_to_test.model(anchor)
+        positive_vector = model_to_test.model(positive)
+        negative_vector = model_to_test.model(negative)
+
+        total_loss += loss(anchor_vector, positive_vector, negative_vector).item()
+    return total_loss / len(val_dataset)
+
+
 if __name__ == '__main__':
     model = SiameseNetwork(base='resnet101').cuda()
-    best_model_path = f'./models/triplet/resnet101.pt'
+    # best_model_path = f'./models/triplet/resnet152_4096_ft_1_16.pt'
+    best_model_path = f'./models/resnet101 4096.pt'
     model.load(best_model_path)
     model.eval()
     predictor_ = LinearPredictor().cuda()
-    predictor_.load('./models/predictor-linear.pt')
+    predictor_.load('./models/best-predictor-resnet152 2.pt')
     predictor_.eval()
 
     t0 = datetime.now()
-    conf_matrix, report_ = test_with_val_data(model, predictor_)
+    # conf_matrix, report_ = test_with_val_data(model, predictor_)
+    print('Total loss:', test_loss(model))
     total_time = datetime.now() - t0
     print('Elapsed time:', total_time)
-    print(conf_matrix)
-    print(report_)
+    # print(conf_matrix)
+    # print(report_)

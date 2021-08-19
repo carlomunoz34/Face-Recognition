@@ -1,7 +1,6 @@
 import torch
 from torch.utils.data import Dataset
 import cv2
-from glob import glob
 import numpy as np
 import pandas as pd
 from utils.constants import MOBILENET_IMG_HEIGHT, MOBILENET_IMG_WIDTH
