@@ -1,10 +1,11 @@
+import torch.cuda
+
 from siamese import SiameseNetwork
-from siamese.predictors import LinearPredictor
 from detector import FaceDetector
 from data import ImageSelector, process_image
 import numpy as np
 import cv2
-from utils.constants import RESNET_IMG_HEIGHT, RESNET_IMG_WIDTH
+from utils.constants import IMG_HEIGHT, IMG_WIDTH, mean, std
 
 
 def web_cam(model_to_test):
@@ -20,8 +21,8 @@ def web_cam(model_to_test):
 
         for face, start_x, start_y, end_x, end_y in zip(faces, start_xs, start_ys, end_xs, end_ys):
             try:
-                face = cv2.resize(face, (RESNET_IMG_WIDTH, RESNET_IMG_HEIGHT))
-                face = process_image(face, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                face = cv2.resize(face, (IMG_HEIGHT, IMG_WIDTH))
+                face = process_image(face, mean=mean, std=std)
             except:
                 break
             face = np.expand_dims(face, 0).astype(np.float16)
@@ -48,14 +49,12 @@ def web_cam(model_to_test):
 
 
 if __name__ == '__main__':
-    best_model_path = './siamese/models/triplet/resnet101.pt'
-    predictor_path = './siamese/models/predictor-linear.pt'
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    best_model_path = './siamese/models/best-b3_with_predictor.pt'
 
-    predictor = LinearPredictor().cuda()
-    predictor.load(predictor_path)
-    model = SiameseNetwork(base='resnet101') \
+    model = SiameseNetwork(device, best_model_path) \
         .load(best_model_path) \
         .cuda() \
-        .initialize(predictor, cuda=True, half=True)
+        .initialize()
 
     web_cam(model)
